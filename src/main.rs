@@ -10,7 +10,7 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let database = Database::open(&args[1])?;
+    let mut database = Database::open(&args[1])?;
 
     // Parse command and act accordingly
     let command = &args[2];
@@ -26,7 +26,24 @@ fn main() -> Result<()> {
             .schema
             .user_tables()
             .for_each(|row| println!("{}", row.name)),
-        _ => bail!("Missing or invalid command passed: {}", command),
+        query => {
+            if !query.starts_with("SELECT COUNT(*) FROM ") {
+                bail!("Invalid command passed: {}", command);
+            }
+
+            let table_name = query.split(" ").last().map_or_else(
+                || bail!("Invalid command passed: {}", command),
+                |s| Ok(s.trim()),
+            )?;
+
+            let row = database
+                .schema
+                .find_table(table_name)
+                .map_or_else(|| bail!("Table not found: {}", table_name), Ok)?;
+
+            let page = database.get_page(row.rootpage - 1)?;
+            println!("{}", page.header.number_of_cells);
+        }
     }
 
     Ok(())

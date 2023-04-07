@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{prelude::*, SeekFrom};
 
 use anyhow::Result;
 
@@ -47,5 +47,13 @@ impl Database {
             file,
             schema,
         })
+    }
+
+    pub fn get_page(&mut self, number: u32) -> Result<Page> {
+        self.file.seek(SeekFrom::Start(
+            number as u64 * self.header.page_size as u64,
+        ))?;
+
+        Page::read(&mut self.file, self.header.page_size)
     }
 }

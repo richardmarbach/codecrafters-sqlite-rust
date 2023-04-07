@@ -25,6 +25,10 @@ impl SQLiteSchema {
             .filter(|row| row.kind == "table")
             .filter(|row| !row.name.starts_with("sqlite_"))
     }
+
+    pub fn find_table(&self, table_name: &str) -> Option<&SQLiteSchemaRow> {
+        self.user_tables().find(|row| row.name == table_name)
+    }
 }
 
 #[derive(Debug)]

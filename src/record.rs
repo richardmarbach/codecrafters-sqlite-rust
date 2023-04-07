@@ -60,7 +60,7 @@ pub struct Record<'page> {
 macro_rules! read_n_bytes_as_i64 {
     ($payload:expr, $cursor:expr, $n:expr) => {{
         let mut bytes = [0; 8];
-        bytes[0..$n].copy_from_slice(&$payload[$cursor..$cursor + $n]);
+        bytes[(8 - $n)..].copy_from_slice(&$payload[$cursor..$cursor + $n]);
         $cursor += $n;
         i64::from_be_bytes(bytes)
     }};
@@ -84,7 +84,10 @@ impl<'page> Record<'page> {
         for column in columns.iter() {
             let value = match column {
                 ColumnType::Null => ColumnValue::Null,
-                ColumnType::I8 => ColumnValue::I8(read_n_bytes_as_i64!(payload, cursor, 1)),
+                ColumnType::I8 => {
+                    let value = ColumnValue::I8(read_n_bytes_as_i64!(payload, cursor, 1));
+                    value
+                }
                 ColumnType::I16 => ColumnValue::I16(read_n_bytes_as_i64!(payload, cursor, 2)),
                 ColumnType::I24 => ColumnValue::I24(read_n_bytes_as_i64!(payload, cursor, 3)),
                 ColumnType::I32 => ColumnValue::I32(read_n_bytes_as_i64!(payload, cursor, 4)),
