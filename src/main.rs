@@ -22,24 +22,26 @@ fn main() -> Result<()> {
                 database.schema.user_tables().count()
             );
         }
+
         ".tables" => database
             .schema
             .user_tables()
             .for_each(|row| println!("{}", row.name)),
+
         query => {
             if !query.starts_with("SELECT COUNT(*) FROM ") {
                 bail!("Invalid command passed: {}", command);
             }
 
-            let table_name = query.split(" ").last().map_or_else(
-                || bail!("Invalid command passed: {}", command),
-                |s| Ok(s.trim()),
-            )?;
+            let table_name = query
+                .split(" ")
+                .last()
+                .ok_or(anyhow::anyhow!("Invalid command passed: {}", command))?;
 
             let row = database
                 .schema
                 .find_table(table_name)
-                .map_or_else(|| bail!("Table not found: {}", table_name), Ok)?;
+                .ok_or(anyhow::anyhow!("Table not found: {}", table_name))?;
 
             let page = database.get_page(row.rootpage - 1)?;
             println!("{}", page.header.number_of_cells);
