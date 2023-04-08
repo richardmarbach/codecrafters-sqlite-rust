@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use sqlite_starter_rust::database::Database;
+use sqlite_starter_rust::{database::Database, sql};
 
 fn main() -> Result<()> {
     // Parse arguments
@@ -28,19 +28,26 @@ fn main() -> Result<()> {
             .user_tables()
             .for_each(|row| println!("{}", row.name)),
 
-        query => {
-            let table_name = query
-                .split(" ")
-                .last()
-                .ok_or(anyhow::anyhow!("Invalid command passed: {}", command))?;
+        query_string => {
+            let (_, query) = sql::parse(query_string.as_bytes())
+                .map_err(|_e| anyhow::anyhow!("Failed to parse query"))?;
 
-            let row = database
-                .schema
-                .find_table(table_name)
-                .ok_or(anyhow::anyhow!("Table not found: {}", table_name))?;
+            match query {
+                sql::SQLCommand::Select(sql::SelectStatement::Count(table)) => {
+                    let row = database
+                        .schema
+                        .find_table(&table)
+                        .ok_or(anyhow::anyhow!("Table not found: {}", table))?;
 
-            let page = database.get_page(row.rootpage - 1)?;
-            println!("{}", page.header.number_of_cells);
+                    let page = database.get_page(row.rootpage - 1)?;
+                    println!("{}", page.header.number_of_cells);
+                }
+                sql::SQLCommand::Select(sql::SelectStatement::Fields(fields)) => {
+                    //
+                    bail!("Unsupported command: {}", query_string);
+                }
+                sql::SQLCommand::CreateTable(_) => bail!("Unsupported command: {}", query_string),
+            };
         }
     }
 
