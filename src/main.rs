@@ -29,10 +29,6 @@ fn main() -> Result<()> {
             .for_each(|row| println!("{}", row.name)),
 
         query => {
-            if !query.starts_with("SELECT COUNT(*) FROM ") {
-                bail!("Invalid command passed: {}", command);
-            }
-
             let table_name = query
                 .split(" ")
                 .last()
