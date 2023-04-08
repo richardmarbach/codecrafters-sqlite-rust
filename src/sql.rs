@@ -12,7 +12,13 @@ use nom::{
 };
 
 #[derive(Debug, PartialEq)]
-pub struct SelectStatement {
+pub enum SelectStatement {
+    Fields(SelectFields),
+    Count(String),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SelectFields {
     pub fields: Vec<String>,
     pub table: String,
 }
@@ -38,7 +44,23 @@ pub fn parse(input: &[u8]) -> IResult<&[u8], SQLCommand> {
     alt((
         map(creation, |c| SQLCommand::CreateTable(c)),
         map(selection, |s| SQLCommand::Select(s)),
+        map(count_selection, |s| SQLCommand::Select(s)),
     ))(input)
+}
+
+fn count_selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
+    let (remaining_input, (_, _, _, _, _, _, table, _)) = tuple((
+        tag_no_case("select"),
+        multispace1,
+        tag_no_case("count(*)"),
+        multispace1,
+        tag_no_case("from"),
+        multispace1,
+        identifier,
+        opt(tag(";")),
+    ))(input)?;
+
+    Ok((remaining_input, SelectStatement::Count(table)))
 }
 
 fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
@@ -53,7 +75,10 @@ fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
         opt(tag(";")),
     ))(input)?;
 
-    Ok((remaining_input, SelectStatement { table, fields }))
+    Ok((
+        remaining_input,
+        SelectStatement::Fields(SelectFields { table, fields }),
+    ))
 }
 
 fn fields(input: &[u8]) -> IResult<&[u8], Vec<String>> {
@@ -114,10 +139,10 @@ mod tests {
 
         assert_eq!(
             result,
-            SQLCommand::Select(SelectStatement {
+            SQLCommand::Select(SelectStatement::Fields(SelectFields {
                 table: "test".to_string(),
                 fields: vec!["id".to_string()]
-            })
+            }))
         );
     }
 
@@ -128,10 +153,21 @@ mod tests {
 
         assert_eq!(
             result,
-            SQLCommand::Select(SelectStatement {
+            SQLCommand::Select(SelectStatement::Fields(SelectFields {
                 table: "test".to_string(),
                 fields: vec!["id".to_string(), "name".to_string()]
-            })
+            }))
+        );
+    }
+
+    #[test]
+    fn parse_select_with_count() {
+        let input = b"SELECT COUNT(*) FROM test";
+        let (_, result) = parse(input).unwrap();
+
+        assert_eq!(
+            result,
+            SQLCommand::Select(SelectStatement::Count("test".to_string()))
         );
     }
 
