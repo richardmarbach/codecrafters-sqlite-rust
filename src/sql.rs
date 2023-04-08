@@ -42,7 +42,7 @@ pub enum SQLCommand {
 
 pub fn parse(input: &[u8]) -> IResult<&[u8], SQLCommand> {
     alt((
-        map(creation, |c| SQLCommand::CreateTable(c)),
+        map(parse_creation, |c| SQLCommand::CreateTable(c)),
         map(selection, |s| SQLCommand::Select(s)),
         map(count_selection, |s| SQLCommand::Select(s)),
     ))(input)
@@ -88,7 +88,7 @@ fn fields(input: &[u8]) -> IResult<&[u8], Vec<String>> {
     ))(input)
 }
 
-fn creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
+pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
     let (remaining_input, (_, _, _, _, table, _, _, _, fields, _, _, _)) = tuple((
         tag_no_case("create"),
         multispace1,

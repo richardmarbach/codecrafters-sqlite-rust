@@ -31,7 +31,7 @@ impl SQLiteSchema {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SQLiteSchemaRow {
     pub rowid: u64,
     pub kind: String,

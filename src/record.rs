@@ -52,6 +52,25 @@ pub enum ColumnValue<'page> {
     Text(&'page [u8]),
 }
 
+impl<'page> std::fmt::Display for ColumnValue<'page> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ColumnValue::Null => write!(f, "NULL"),
+            ColumnValue::I8(n)
+            | ColumnValue::I16(n)
+            | ColumnValue::I24(n)
+            | ColumnValue::I32(n)
+            | ColumnValue::I48(n)
+            | ColumnValue::I64(n) => write!(f, "{}", n),
+            ColumnValue::F64(n) => write!(f, "{}", n),
+            ColumnValue::Zero => write!(f, "0"),
+            ColumnValue::One => write!(f, "1"),
+            ColumnValue::Blob(content) => write!(f, "<BLOB {} bytes>", content.len()),
+            ColumnValue::Text(content) => write!(f, "{}", String::from_utf8_lossy(content)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Record<'page> {
     pub values: Vec<ColumnValue<'page>>,
