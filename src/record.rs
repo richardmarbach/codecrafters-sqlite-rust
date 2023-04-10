@@ -90,8 +90,9 @@ impl<'page> Record<'page> {
         let mut columns = Vec::with_capacity(column_count);
 
         let mut cursor = 0;
-        let (_header_size, offset) = varint::read(&payload[cursor..]);
+        let (header_size, offset) = varint::read(&payload[cursor..]);
         cursor += offset;
+        eprintln!("header_size: {}", header_size);
 
         for _ in 0..column_count {
             let (column, offset) = varint::read(&payload[cursor..]);
