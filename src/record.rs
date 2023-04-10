@@ -101,7 +101,6 @@ impl<'page> Record<'page> {
 
         let mut values = Vec::with_capacity(column_count);
         for column in columns.iter() {
-            eprintln!("cursor: {} slice:{}", cursor, payload.len());
             let value = match column {
                 ColumnType::Null => ColumnValue::Null,
                 ColumnType::I8 => {
@@ -128,6 +127,12 @@ impl<'page> Record<'page> {
                     value
                 }
                 ColumnType::Text(size) => {
+                    eprintln!(
+                        "cursor: {} slice:{}, size: {}",
+                        cursor,
+                        payload.len(),
+                        *size
+                    );
                     let value = ColumnValue::Text(&payload[cursor..(cursor + *size)]);
                     cursor += *size;
                     value
