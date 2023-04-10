@@ -41,6 +41,15 @@ pub struct CreateTableStatement {
     pub fields: Vec<Field>,
 }
 
+impl CreateTableStatement {
+    pub fn find_field(&self, field_name: &str) -> Option<(usize, &Field)> {
+        self.fields
+            .iter()
+            .enumerate()
+            .find(|(_, field)| field.name == field_name)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum SQLCommand {
     Select(SelectStatement),
