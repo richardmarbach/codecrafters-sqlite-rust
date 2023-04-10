@@ -152,10 +152,18 @@ pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
 }
 
 fn identifier(input: &[u8]) -> IResult<&[u8], String> {
-    let (input, name) = take_while1(is_alphanumeric)(input)?;
+    let (input, name) = delimited(
+        opt(tag("\"")),
+        take_while1(is_sql_identifier),
+        opt(tag("\"")),
+    )(input)?;
     let name = String::from_utf8(name.to_vec()).unwrap();
 
     Ok((input, name))
+}
+
+fn is_sql_identifier(chr: u8) -> bool {
+    is_alphanumeric(chr) || chr == b'_'
 }
 
 fn field_specification_list(input: &[u8]) -> IResult<&[u8], Vec<Field>> {
@@ -261,7 +269,7 @@ mod tests {
 
     #[test]
     fn parse_create_table_with_two_entries() {
-        let input = b"CREATE TABLE test (id INTEGER primary key, name TEXT NOT NULL)";
+        let input = b"CREATE TABLE \"test\" (id INTEGER primary key, name TEXT NOT NULL)";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(
@@ -274,6 +282,42 @@ mod tests {
                     },
                     Field {
                         name: "name".to_string()
+                    }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parse_create_super_heroes() {
+        let input = b"CREATE TABLE IF NOT EXISTS \"superheroes\" (id integer primary key autoincrement, name text not null, eye_color text, hair_color text, appearance_count integer, first_appearance text, first_appearance_year text);";
+        let (_, result) = parse(input).unwrap();
+
+        assert_eq!(
+            result,
+            SQLCommand::CreateTable(CreateTableStatement {
+                table: "superheroes".to_string(),
+                fields: vec![
+                    Field {
+                        name: "id".to_string()
+                    },
+                    Field {
+                        name: "name".to_string()
+                    },
+                    Field {
+                        name: "eye_color".to_string()
+                    },
+                    Field {
+                        name: "hair_color".to_string()
+                    },
+                    Field {
+                        name: "appearance_count".to_string()
+                    },
+                    Field {
+                        name: "first_appearance".to_string()
+                    },
+                    Field {
+                        name: "first_appearance_year".to_string()
                     }
                 ]
             })
