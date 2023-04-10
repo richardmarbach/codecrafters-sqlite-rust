@@ -119,12 +119,17 @@ fn field_specification_list(input: &[u8]) -> IResult<&[u8], Vec<Field>> {
 }
 
 fn field_specification(input: &[u8]) -> IResult<&[u8], Field> {
-    let (remaining_input, (column, _, _, _)) = tuple((
+    let (remaining_input, (column, _, _, _, _)) = tuple((
         alphanumeric1,
         opt(delimited(multispace0, alphanumeric1, multispace0)),
         opt(delimited(
             multispace0,
-            tag_no_case("PRIMARY KEY AUTOINCREMENT"),
+            tag_no_case("PRIMARY KEY"),
+            multispace0,
+        )),
+        opt(delimited(
+            multispace0,
+            tag_no_case("AUTOINCREMENT"),
             multispace0,
         )),
         opt(delimited(multispace0, tag(","), multispace0)),
@@ -194,7 +199,7 @@ mod tests {
 
     #[test]
     fn parse_create_table_with_two_entries() {
-        let input = b"CREATE TABLE test (id INTEGER, name TEXT)";
+        let input = b"CREATE TABLE test (id INTEGER primary key, name TEXT)";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(

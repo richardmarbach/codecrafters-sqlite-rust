@@ -40,7 +40,6 @@ fn main() -> Result<()> {
                         .schema
                         .find_table(&table)
                         .ok_or(anyhow::anyhow!("Table not found: {}", table))?;
-
                     let page = database.get_page(row.rootpage - 1)?;
                     println!("{}", page.header.number_of_cells);
                 }
