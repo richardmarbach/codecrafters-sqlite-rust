@@ -131,25 +131,25 @@ impl<'page> Cell<'page> {
 
     fn read_leaf_table(data: &'page [u8]) -> Cell {
         let mut cursor = 0;
-        let (size, offset) = varint::read(data);
-        let size = size as u64;
+        let (payload_size, offset) = varint::read(data);
+        let payload_size = payload_size as u64;
         cursor += offset;
 
         let (rowid, offset) = varint::read(&data[cursor..]);
         cursor += offset;
 
-        let (overflow_page, end) = if size > data[cursor..].len() as u64 {
+        let (overflow_page, end) = if payload_size > data[cursor..].len() as u64 {
             let end = data.len() - 4;
             (
                 u32::from_be_bytes([data[end], data[end + 1], data[end + 2], data[end + 3]]),
                 end,
             )
         } else {
-            (0, cursor + size as usize)
+            (0, cursor + payload_size as usize)
         };
 
         Cell::LeafTable {
-            size,
+            size: payload_size,
             rowid: rowid as u64,
             payload: &data[cursor..end],
             overflow_page,

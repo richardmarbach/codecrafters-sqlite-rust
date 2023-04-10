@@ -86,22 +86,25 @@ macro_rules! read_n_bytes {
 }
 
 impl<'page> Record<'page> {
-    pub fn read(payload: &'page [u8], column_count: usize) -> Self {
-        let mut columns = Vec::with_capacity(column_count);
-
+    pub fn read(payload: &'page [u8]) -> Self {
         let mut cursor = 0;
-        let (_header_size, offset) = varint::read(&payload[cursor..]);
+        let (header_size, offset) = varint::read(&payload[cursor..]);
         cursor += offset;
 
-        for _ in 0..column_count {
+        let mut remaining_bytes = header_size as usize - offset;
+
+        // Most headers are 1 byte, but some are 2 bytes, rarely 3/4
+        let mut columns = Vec::with_capacity(remaining_bytes);
+
+        while remaining_bytes > 0 {
             let (column, offset) = varint::read(&payload[cursor..]);
             cursor += offset;
+            remaining_bytes -= offset;
             columns.push(ColumnType::from(column as u64));
         }
 
-        let mut values = Vec::with_capacity(column_count);
+        let mut values = Vec::with_capacity(columns.len());
         for column in columns.iter() {
-            eprintln!("cursor: {} column: {:?}", cursor, column);
             let value = match column {
                 ColumnType::Null => ColumnValue::Null,
                 ColumnType::I8 => ColumnValue::I8(read_n_bytes!(i64, payload, cursor, 1)),
@@ -119,15 +122,7 @@ impl<'page> Record<'page> {
                     value
                 }
                 ColumnType::Text(size) => {
-                    eprintln!(
-                        "cursor: {} slice:{}, size: {}",
-                        cursor,
-                        payload.len(),
-                        *size
-                    );
                     let value = ColumnValue::Text(&payload[cursor..(cursor + *size)]);
-                    eprintln!("value: {}", value);
-
                     cursor += *size;
                     value
                 }

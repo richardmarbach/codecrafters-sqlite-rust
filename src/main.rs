@@ -10,6 +10,8 @@ fn main() -> Result<()> {
         _ => {}
     }
 
+    {}
+
     let mut database = Database::open(&args[1])?;
 
     // Parse command and act accordingly
@@ -49,18 +51,15 @@ fn main() -> Result<()> {
                         .ok_or(anyhow::anyhow!("Table not found: {}", command.table))?
                         .clone();
 
-                    println!("schema: {}", row.sql);
-
                     let page = database.get_page(row.rootpage - 1)?;
                     let (_, definition) = sql::parse_creation(row.sql.as_bytes())
                         .map_err(|_e| anyhow::anyhow!("Failed to parse table definition"))?;
-                    let field_count = definition.fields.len();
 
                     let records: Vec<Record> = page
                         .cells()
                         .map(|cell| match cell {
                             sqlite_starter_rust::page::Cell::LeafTable { payload, .. } => {
-                                Ok(Record::read(payload, field_count))
+                                Ok(Record::read(payload))
                             }
                             _ => bail!("Unsupported cell type"),
                         })
