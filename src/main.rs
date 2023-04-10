@@ -64,14 +64,28 @@ fn main() -> Result<()> {
                         })
                         .collect::<Result<Vec<_>>>()?;
 
-                    let field_number = definition
+                    let fields = command
                         .fields
                         .iter()
-                        .position(|field| &field.name == command.fields.first().unwrap())
-                        .expect("Field not found");
+                        .map(|sql_field| {
+                            definition
+                                .fields
+                                .iter()
+                                .position(|field| field.name == *sql_field)
+                                .expect("Fields not found")
+                        })
+                        .collect::<Vec<_>>();
 
                     for record in records {
-                        println!("{}", record.values[field_number]);
+                        let values = record
+                            .values
+                            .iter()
+                            .enumerate()
+                            .filter(|(i, _)| fields.contains(i))
+                            .map(|(_, v)| format!("{}", v))
+                            .collect::<Vec<_>>()
+                            .join("|");
+                        println!("{}", values);
                     }
                 }
                 sql::SQLCommand::CreateTable(_) => bail!("Unsupported command: {}", query_string),
