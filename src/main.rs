@@ -49,6 +49,8 @@ fn main() -> Result<()> {
                         .ok_or(anyhow::anyhow!("Table not found: {}", command.table))?
                         .clone();
 
+                    println!("schema: {}", row.sql);
+
                     let page = database.get_page(row.rootpage - 1)?;
                     let (_, definition) = sql::parse_creation(row.sql.as_bytes())
                         .map_err(|_e| anyhow::anyhow!("Failed to parse table definition"))?;
