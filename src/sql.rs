@@ -6,7 +6,7 @@ use nom::{
         is_alphanumeric,
     },
     combinator::{map, opt},
-    multi::many1,
+    multi::{many0, many1},
     sequence::{delimited, terminated, tuple},
     IResult,
 };
@@ -83,7 +83,7 @@ fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
     let (remaining_input, (_, _, fields, _, _, _, table, where_clause, _)) = tuple((
         tag_no_case("select"),
         multispace1,
-        fields,
+        identifiers,
         multispace0,
         tag_no_case("from"),
         multispace1,
@@ -100,6 +100,13 @@ fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
             where_clause,
         }),
     ))
+}
+
+fn identifiers(input: &[u8]) -> IResult<&[u8], Vec<String>> {
+    many1(terminated(
+        identifier,
+        opt(delimited(multispace0, tag(","), multispace0)),
+    ))(input)
 }
 
 fn parse_where_clause(input: &[u8]) -> IResult<&[u8], Option<WhereClause>> {
@@ -122,13 +129,6 @@ fn parse_where_clause(input: &[u8]) -> IResult<&[u8], Option<WhereClause>> {
     };
 
     Ok((remaining_input, maybe_where))
-}
-
-fn fields(input: &[u8]) -> IResult<&[u8], Vec<String>> {
-    many1(terminated(
-        identifier,
-        opt(delimited(multispace0, tag(","), multispace0)),
-    ))(input)
 }
 
 pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
@@ -162,24 +162,22 @@ fn field_specification_list(input: &[u8]) -> IResult<&[u8], Vec<Field>> {
     many1(field_specification)(input)
 }
 
+fn column_constraint(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let not_null = delimited(multispace0, tag_no_case("NOT NULL"), multispace0);
+    let auto_increment = delimited(multispace0, tag_no_case("AUTOINCREMENT"), multispace0);
+    let primary_key = delimited(multispace0, tag_no_case("PRIMARY KEY"), multispace0);
+
+    alt((not_null, auto_increment, primary_key))(input)
+}
+
 fn field_specification(input: &[u8]) -> IResult<&[u8], Field> {
-    let (remaining_input, (column, _, _, _, _)) = tuple((
-        alphanumeric1,
-        opt(delimited(multispace0, alphanumeric1, multispace0)),
-        opt(delimited(
-            multispace0,
-            tag_no_case("PRIMARY KEY"),
-            multispace0,
-        )),
-        opt(delimited(
-            multispace0,
-            tag_no_case("AUTOINCREMENT"),
-            multispace0,
-        )),
+    let (remaining_input, (column, _, _, _)) = tuple((
+        identifier,
+        opt(delimited(multispace0, alphanumeric1, multispace0)), // type
+        many0(column_constraint),
         opt(delimited(multispace0, tag(","), multispace0)),
     ))(input)?;
-    let name = String::from_utf8(column.to_vec()).unwrap();
-    Ok((remaining_input, Field { name }))
+    Ok((remaining_input, Field { name: column }))
 }
 
 #[cfg(test)]
@@ -263,7 +261,7 @@ mod tests {
 
     #[test]
     fn parse_create_table_with_two_entries() {
-        let input = b"CREATE TABLE test (id INTEGER primary key, name TEXT)";
+        let input = b"CREATE TABLE test (id INTEGER primary key, name TEXT NOT NULL)";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(
