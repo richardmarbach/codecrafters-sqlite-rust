@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
     character::{
-        complete::{alphanumeric1, multispace0, multispace1},
+        complete::{alphanumeric0, alphanumeric1, multispace0, multispace1},
         is_alphanumeric,
     },
     combinator::{map, opt},
@@ -18,9 +18,16 @@ pub enum SelectStatement {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct WhereClause {
+    pub field: String,
+    pub value: String,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct SelectFields {
     pub fields: Vec<String>,
     pub table: String,
+    pub where_clause: Option<WhereClause>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,7 +71,7 @@ fn count_selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
 }
 
 fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
-    let (remaining_input, (_, _, fields, _, _, _, table, _)) = tuple((
+    let (remaining_input, (_, _, fields, _, _, _, table, where_clause, _)) = tuple((
         tag_no_case("select"),
         multispace1,
         fields,
@@ -72,13 +79,40 @@ fn selection(input: &[u8]) -> IResult<&[u8], SelectStatement> {
         tag_no_case("from"),
         multispace1,
         identifier,
+        parse_where_clause,
         opt(tag(";")),
     ))(input)?;
 
     Ok((
         remaining_input,
-        SelectStatement::Fields(SelectFields { table, fields }),
+        SelectStatement::Fields(SelectFields {
+            table,
+            fields,
+            where_clause,
+        }),
     ))
+}
+
+fn parse_where_clause(input: &[u8]) -> IResult<&[u8], Option<WhereClause>> {
+    let (remaining_input, maybe_where) = opt(tuple((
+        multispace0,
+        tag_no_case("where"),
+        multispace0,
+        identifier,
+        multispace0,
+        tag("="),
+        multispace0,
+        delimited(tag("'"), alphanumeric0, tag("'")),
+    )))(input)?;
+
+    let maybe_where = if let Some((_, _, _, field, _, _, _, value)) = maybe_where {
+        let value = String::from_utf8(value.to_vec()).unwrap();
+        Some(WhereClause { field, value })
+    } else {
+        None
+    };
+
+    Ok((remaining_input, maybe_where))
 }
 
 fn fields(input: &[u8]) -> IResult<&[u8], Vec<String>> {
@@ -151,7 +185,8 @@ mod tests {
             result,
             SQLCommand::Select(SelectStatement::Fields(SelectFields {
                 table: "test".to_string(),
-                fields: vec!["id".to_string()]
+                fields: vec!["id".to_string()],
+                where_clause: None
             }))
         );
     }
@@ -165,7 +200,26 @@ mod tests {
             result,
             SQLCommand::Select(SelectStatement::Fields(SelectFields {
                 table: "test".to_string(),
-                fields: vec!["id".to_string(), "name".to_string()]
+                fields: vec!["id".to_string(), "name".to_string()],
+                where_clause: None
+            }))
+        );
+    }
+
+    #[test]
+    fn parse_select_with_where() {
+        let input = b"SELECT id, name FROM test WHERE name = 'test'";
+        let (_, result) = parse(input).unwrap();
+
+        assert_eq!(
+            result,
+            SQLCommand::Select(SelectStatement::Fields(SelectFields {
+                table: "test".to_string(),
+                fields: vec!["id".to_string(), "name".to_string()],
+                where_clause: Some(WhereClause {
+                    field: "name".to_string(),
+                    value: "test".to_string()
+                })
             }))
         );
     }
