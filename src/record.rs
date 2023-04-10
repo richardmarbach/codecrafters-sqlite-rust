@@ -134,6 +134,7 @@ impl<'page> Record<'page> {
                         *size
                     );
                     let value = ColumnValue::Text(&payload[cursor..(cursor + *size)]);
+                    eprintln!("value: {}", value);
                     cursor += *size;
                     value
                 }
