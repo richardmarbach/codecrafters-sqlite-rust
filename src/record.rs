@@ -76,12 +76,12 @@ pub struct Record<'page> {
     pub values: Vec<ColumnValue<'page>>,
 }
 
-macro_rules! read_n_bytes_as_i64 {
-    ($payload:expr, $cursor:expr, $n:expr) => {{
+macro_rules! read_n_bytes {
+    ($t:ident, $payload:expr, $cursor:expr, $n:expr) => {{
         let mut bytes = [0; 8];
         bytes[(8 - $n)..].copy_from_slice(&$payload[$cursor..$cursor + $n]);
         $cursor += $n;
-        i64::from_be_bytes(bytes)
+        $t::from_be_bytes(bytes)
     }};
 }
 
@@ -90,9 +90,8 @@ impl<'page> Record<'page> {
         let mut columns = Vec::with_capacity(column_count);
 
         let mut cursor = 0;
-        let (header_size, offset) = varint::read(&payload[cursor..]);
+        let (_header_size, offset) = varint::read(&payload[cursor..]);
         cursor += offset;
-        eprintln!("header_size: {}", header_size);
 
         for _ in 0..column_count {
             let (column, offset) = varint::read(&payload[cursor..]);
@@ -102,24 +101,16 @@ impl<'page> Record<'page> {
 
         let mut values = Vec::with_capacity(column_count);
         for column in columns.iter() {
+            eprintln!("cursor: {} column: {:?}", cursor, column);
             let value = match column {
                 ColumnType::Null => ColumnValue::Null,
-                ColumnType::I8 => {
-                    let value = ColumnValue::I8(read_n_bytes_as_i64!(payload, cursor, 1));
-                    value
-                }
-                ColumnType::I16 => ColumnValue::I16(read_n_bytes_as_i64!(payload, cursor, 2)),
-                ColumnType::I24 => ColumnValue::I24(read_n_bytes_as_i64!(payload, cursor, 3)),
-                ColumnType::I32 => ColumnValue::I32(read_n_bytes_as_i64!(payload, cursor, 4)),
-                ColumnType::I48 => ColumnValue::I48(read_n_bytes_as_i64!(payload, cursor, 6)),
-                ColumnType::I64 => ColumnValue::I64(read_n_bytes_as_i64!(payload, cursor, 8)),
-                ColumnType::F64 => {
-                    let mut bytes = [0; 8];
-                    bytes.copy_from_slice(&payload[cursor..cursor + 8]);
-                    let value = ColumnValue::F64(f64::from_be_bytes(bytes));
-                    cursor += 8;
-                    value
-                }
+                ColumnType::I8 => ColumnValue::I8(read_n_bytes!(i64, payload, cursor, 1)),
+                ColumnType::I16 => ColumnValue::I16(read_n_bytes!(i64, payload, cursor, 2)),
+                ColumnType::I24 => ColumnValue::I24(read_n_bytes!(i64, payload, cursor, 3)),
+                ColumnType::I32 => ColumnValue::I32(read_n_bytes!(i64, payload, cursor, 4)),
+                ColumnType::I48 => ColumnValue::I48(read_n_bytes!(i64, payload, cursor, 6)),
+                ColumnType::I64 => ColumnValue::I64(read_n_bytes!(i64, payload, cursor, 8)),
+                ColumnType::F64 => ColumnValue::F64(read_n_bytes!(f64, payload, cursor, 8)),
                 ColumnType::Zero => ColumnValue::Zero,
                 ColumnType::One => ColumnValue::One,
                 ColumnType::Blob(size) => {
@@ -136,6 +127,7 @@ impl<'page> Record<'page> {
                     );
                     let value = ColumnValue::Text(&payload[cursor..(cursor + *size)]);
                     eprintln!("value: {}", value);
+
                     cursor += *size;
                     value
                 }
