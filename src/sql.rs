@@ -132,11 +132,12 @@ fn fields(input: &[u8]) -> IResult<&[u8], Vec<String>> {
 }
 
 pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
-    let (remaining_input, (_, _, _, _, table, _, _, _, fields, _, _, _)) = tuple((
+    let (remaining_input, (_, _, _, _, _, table, _, _, _, fields, _, _, _)) = tuple((
         tag_no_case("create"),
         multispace1,
         tag_no_case("table"),
         multispace1,
+        opt(tuple((tag_no_case("IF NOT EXISTS"), multispace1))),
         identifier,
         multispace0,
         tag("("),
@@ -246,7 +247,7 @@ mod tests {
 
     #[test]
     fn parse_create_table_with_one_entry() {
-        let input = b"CREATE TABLE test (id INTEGER primary key autoincrement)";
+        let input = b"CREATE TABLE IF NOT EXISTS test (id INTEGER primary key autoincrement)";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(
