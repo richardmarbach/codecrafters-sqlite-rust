@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
@@ -31,8 +32,23 @@ pub struct SelectFields {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ColumnConstraint {
+    PrimaryKey,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Field {
     pub name: String,
+    pub is_primary_key: bool,
+}
+
+impl Field {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            is_primary_key: false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -170,22 +186,47 @@ fn field_specification_list(input: &[u8]) -> IResult<&[u8], Vec<Field>> {
     many1(field_specification)(input)
 }
 
-fn column_constraint(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    let not_null = delimited(multispace0, tag_no_case("NOT NULL"), multispace0);
-    let auto_increment = delimited(multispace0, tag_no_case("AUTOINCREMENT"), multispace0);
-    let primary_key = delimited(multispace0, tag_no_case("PRIMARY KEY"), multispace0);
+fn column_constraint(input: &[u8]) -> IResult<&[u8], Option<ColumnConstraint>> {
+    let not_null = map(
+        delimited(multispace0, tag_no_case("NOT NULL"), multispace0),
+        |_| None,
+    );
+    let auto_increment = map(
+        delimited(multispace0, tag_no_case("AUTOINCREMENT"), multispace0),
+        |_| None,
+    );
+    let primary_key = map(
+        delimited(multispace0, tag_no_case("PRIMARY KEY"), multispace0),
+        |_| Some(ColumnConstraint::PrimaryKey),
+    );
 
     alt((not_null, auto_increment, primary_key))(input)
 }
 
 fn field_specification(input: &[u8]) -> IResult<&[u8], Field> {
-    let (remaining_input, (column, _, _, _)) = tuple((
+    let (remaining_input, (column, ty, constraints, _)) = tuple((
         identifier,
-        opt(delimited(multispace0, alphanumeric1, multispace0)), // type
+        opt(delimited(multispace0, identifier, multispace0)), // type
         many0(column_constraint),
         opt(delimited(multispace0, tag(","), multispace0)),
     ))(input)?;
-    Ok((remaining_input, Field { name: column }))
+
+    let is_primary_key = constraints
+        .iter()
+        .flatten()
+        .find(|c| **c == ColumnConstraint::PrimaryKey)
+        .is_some()
+        && ty
+            .map(|ty| ty.to_ascii_lowercase() == "integer")
+            .unwrap_or(false);
+
+    Ok((
+        remaining_input,
+        Field {
+            name: column,
+            is_primary_key,
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -261,7 +302,8 @@ mod tests {
             SQLCommand::CreateTable(CreateTableStatement {
                 table: "test".to_string(),
                 fields: vec![Field {
-                    name: "id".to_string()
+                    name: "id".to_string(),
+                    is_primary_key: true
                 },]
             })
         );
@@ -278,11 +320,10 @@ mod tests {
                 table: "test".to_string(),
                 fields: vec![
                     Field {
-                        name: "id".to_string()
+                        name: "id".to_string(),
+                        is_primary_key: true
                     },
-                    Field {
-                        name: "name".to_string()
-                    }
+                    Field::new("name".to_string())
                 ]
             })
         );
@@ -299,26 +340,15 @@ mod tests {
                 table: "superheroes".to_string(),
                 fields: vec![
                     Field {
-                        name: "id".to_string()
+                        name: "id".to_string(),
+                        is_primary_key: true,
                     },
-                    Field {
-                        name: "name".to_string()
-                    },
-                    Field {
-                        name: "eye_color".to_string()
-                    },
-                    Field {
-                        name: "hair_color".to_string()
-                    },
-                    Field {
-                        name: "appearance_count".to_string()
-                    },
-                    Field {
-                        name: "first_appearance".to_string()
-                    },
-                    Field {
-                        name: "first_appearance_year".to_string()
-                    }
+                    Field::new("name".to_string()),
+                    Field::new("eye_color".to_string()),
+                    Field::new("hair_color".to_string()),
+                    Field::new("appearance_count".to_string()),
+                    Field::new("first_appearance".to_string()),
+                    Field::new("first_appearance_year".to_string())
                 ]
             })
         );
