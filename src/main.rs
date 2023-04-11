@@ -1,7 +1,7 @@
 use std::io::stdout;
 
 use anyhow::{bail, Result};
-use sqlite_starter_rust::{database::Database, record::Record, sql};
+use sqlite_starter_rust::{database::Database, sql};
 
 fn main() -> Result<()> {
     // Parse arguments

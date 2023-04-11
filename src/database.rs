@@ -64,16 +64,46 @@ impl Database {
         sql_statement: &sql::SelectFields,
         out: &mut impl std::io::Write,
     ) -> Result<()> {
-        let row = self
+        let schema_definition = self
             .schema
             .find_table(&sql_statement.table)
             .ok_or(anyhow::anyhow!("Table not found: {}", &sql_statement.table))?
             .clone();
 
-        let page = self.get_page(row.rootpage - 1)?;
-        let (_, definition) = sql::parse_creation(row.sql.as_bytes())
+        let (_, definition) = sql::parse_creation(schema_definition.sql.as_bytes())
             .map_err(|_e| anyhow::anyhow!("Failed to parse table definition"))?;
 
+        let page = self.get_page(schema_definition.rootpage - 1)?;
+
+        let select_fields = sql_statement
+            .fields
+            .iter()
+            .map(|sql_field| definition.find_field(sql_field).expect("Fields not found"))
+            .map(|(pos, _field)| pos)
+            .collect::<Vec<_>>();
+
+        match page.header.kind {
+            crate::page::PageKind::InteriorIndex => unimplemented!(),
+            crate::page::PageKind::LeafIndex => unimplemented!(),
+            crate::page::PageKind::InteriorTable => unimplemented!(),
+            crate::page::PageKind::LeafTable => self.write_results(
+                &page,
+                &definition,
+                &select_fields,
+                &sql_statement.where_clause,
+                out,
+            ),
+        }
+    }
+
+    fn write_results(
+        &self,
+        page: &Page,
+        definition: &sql::CreateTableStatement,
+        select_fields: &[usize],
+        filter: &Option<sql::WhereClause>,
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
         let records = page
             .cells()
             .map(|cell| match cell {
@@ -82,34 +112,26 @@ impl Database {
             })
             .filter(|record| {
                 let Ok(record) = record else { return true; };
-                let Some(ref where_clause) = sql_statement.where_clause else {
+                let Some(ref filter) = filter else {
                                 return true;
                             };
 
                 let (pos, _field) = definition
-                    .find_field(&where_clause.field)
+                    .find_field(&filter.field)
                     .expect("Field not found");
 
-                format!("{}", record.values[pos]) == where_clause.value
+                format!("{}", record.values[pos]) == filter.value
             })
             .collect::<Result<Vec<Record>>>()?;
 
-        let fields = sql_statement
-            .fields
-            .iter()
-            .map(|sql_field| definition.find_field(sql_field).expect("Fields not found"))
-            .map(|(pos, _)| pos)
-            .collect::<Vec<_>>();
-
         for record in records {
-            let values = fields
+            let values = select_fields
                 .iter()
                 .map(|i| format!("{}", record.values[*i]))
                 .collect::<Vec<_>>()
                 .join("|");
             write!(out, "{}\n", values)?;
         }
-
         Ok(())
     }
 }
