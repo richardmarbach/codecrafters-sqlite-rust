@@ -33,7 +33,7 @@ impl SQLiteSchema {
 
 #[derive(Debug, Clone)]
 pub struct SQLiteSchemaRow {
-    pub rowid: u64,
+    pub rowid: i64,
     pub kind: String,
     pub name: String,
     pub tbl_name: String,

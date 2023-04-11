@@ -85,7 +85,13 @@ impl Database {
         match page.header.kind {
             crate::page::PageKind::InteriorIndex => unimplemented!(),
             crate::page::PageKind::LeafIndex => unimplemented!(),
-            crate::page::PageKind::InteriorTable => unimplemented!(),
+            crate::page::PageKind::InteriorTable => self.follow_references(
+                &page,
+                &definition,
+                &select_fields,
+                &sql_statement.where_clause,
+                out,
+            ),
             crate::page::PageKind::LeafTable => self.write_results(
                 &page,
                 &definition,
@@ -94,6 +100,34 @@ impl Database {
                 out,
             ),
         }
+    }
+
+    fn follow_references(
+        &mut self,
+        page: &Page,
+        definition: &sql::CreateTableStatement,
+        select_fields: &[usize],
+        filter: &Option<sql::WhereClause>,
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
+        for cell in page.cells() {
+            let Cell::InteriorTable { left_child_page, .. } = cell else {
+                bail!("Unsupported cell type");
+            };
+            let page = self.get_page(left_child_page - 1)?;
+            match page.header.kind {
+                crate::page::PageKind::InteriorTable => {
+                    self.follow_references(&page, &definition, &select_fields, &filter, out)?;
+                }
+                crate::page::PageKind::LeafTable => {
+                    self.write_results(&page, &definition, &select_fields, &filter, out)?;
+                }
+
+                _ => bail!("Unsupported page type"),
+            }
+        }
+
+        Ok(())
     }
 
     fn write_results(

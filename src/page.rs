@@ -63,7 +63,7 @@ pub enum Cell<'page> {
     },
     LeafTable {
         size: u64,
-        rowid: u64,
+        rowid: i64,
         payload: &'page [u8],
         overflow_page: u32,
     },
@@ -150,7 +150,7 @@ impl<'page> Cell<'page> {
 
         Cell::LeafTable {
             size: payload_size,
-            rowid: rowid as u64,
+            rowid: rowid as i64,
             payload: &data[cursor..end],
             overflow_page,
         }
