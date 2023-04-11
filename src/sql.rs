@@ -1,9 +1,8 @@
-use itertools::Itertools;
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
     character::{
-        complete::{alphanumeric0, alphanumeric1, multispace0, multispace1},
+        complete::{alphanumeric0, multispace0, multispace1},
         is_alphanumeric,
     },
     combinator::{map, opt},

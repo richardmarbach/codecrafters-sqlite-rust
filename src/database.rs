@@ -79,7 +79,7 @@ impl Database {
             .fields
             .iter()
             .map(|sql_field| definition.find_field(sql_field).expect("Fields not found"))
-            .map(|(pos, _field)| pos)
+            .map(|(pos, field)| (pos, field.is_primary_key))
             .collect::<Vec<_>>();
 
         match page.header.kind {
@@ -106,7 +106,7 @@ impl Database {
         &mut self,
         page: &Page,
         definition: &sql::CreateTableStatement,
-        select_fields: &[usize],
+        select_fields: &[(usize, bool)],
         filter: &Option<sql::WhereClause>,
         out: &mut impl std::io::Write,
     ) -> Result<()> {
@@ -134,14 +134,14 @@ impl Database {
         &self,
         page: &Page,
         definition: &sql::CreateTableStatement,
-        select_fields: &[usize],
+        select_fields: &[(usize, bool)],
         filter: &Option<sql::WhereClause>,
         out: &mut impl std::io::Write,
     ) -> Result<()> {
         let records = page
             .cells()
             .map(|cell| match cell {
-                Cell::LeafTable { payload, .. } => Ok(Record::read(payload)),
+                Cell::LeafTable { payload, rowid, .. } => Ok(Record::read(rowid, payload)),
                 _ => bail!("Unsupported cell type"),
             })
             .filter(|record| {
@@ -161,7 +161,13 @@ impl Database {
         for record in records {
             let values = select_fields
                 .iter()
-                .map(|i| format!("{}", record.values[*i]))
+                .map(|(i, is_primary_key)| {
+                    if *is_primary_key {
+                        format!("{}", record.rowid)
+                    } else {
+                        format!("{}", record.values[*i])
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("|");
             write!(out, "{}\n", values)?;

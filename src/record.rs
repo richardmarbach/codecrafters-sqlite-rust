@@ -73,6 +73,7 @@ impl<'page> std::fmt::Display for ColumnValue<'page> {
 
 #[derive(Debug, Clone)]
 pub struct Record<'page> {
+    pub rowid: i64,
     pub values: Vec<ColumnValue<'page>>,
 }
 
@@ -86,7 +87,7 @@ macro_rules! read_n_bytes {
 }
 
 impl<'page> Record<'page> {
-    pub fn read(payload: &'page [u8]) -> Self {
+    pub fn read(rowid: i64, payload: &'page [u8]) -> Self {
         let mut cursor = 0;
         let (header_size, offset) = varint::read(&payload[cursor..]);
         cursor += offset;
@@ -130,6 +131,6 @@ impl<'page> Record<'page> {
             values.push(value);
         }
 
-        Record { values }
+        Record { values, rowid }
     }
 }

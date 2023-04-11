@@ -52,7 +52,7 @@ impl<'page> TryFrom<Cell<'page>> for SQLiteSchemaRow {
             overflow_page: _,
         } = cell
         {
-            let record = Record::read(payload);
+            let record = Record::read(rowid, payload);
 
             let mut values = record.values.into_iter();
             let kind = values
