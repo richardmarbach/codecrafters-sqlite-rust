@@ -48,7 +48,7 @@ fn main() -> Result<()> {
                 sql::SQLCommand::Select(sql::SelectStatement::Fields(command)) => {
                     database.select_fields(&command, &mut stdout())?;
                 }
-                sql::SQLCommand::CreateTable(_) => bail!("Unsupported command: {}", query_string),
+                _ => bail!("Unsupported command: {}", query_string),
             };
         }
     }

@@ -66,9 +66,17 @@ impl CreateTableStatement {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct CreateIndexStatement {
+    pub name: String,
+    pub table: String,
+    pub fields: Vec<String>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum SQLCommand {
     Select(SelectStatement),
     CreateTable(CreateTableStatement),
+    CreateIndex(CreateIndexStatement),
 }
 
 pub fn parse(input: &[u8]) -> IResult<&[u8], SQLCommand> {
@@ -76,6 +84,7 @@ pub fn parse(input: &[u8]) -> IResult<&[u8], SQLCommand> {
         map(parse_creation, |c| SQLCommand::CreateTable(c)),
         map(selection, |s| SQLCommand::Select(s)),
         map(count_selection, |s| SQLCommand::Select(s)),
+        map(parse_index_creation, |c| SQLCommand::CreateIndex(c)),
     ))(input)
 }
 
@@ -164,6 +173,38 @@ pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {
     ))(input)?;
 
     Ok((remaining_input, CreateTableStatement { table, fields }))
+}
+
+pub fn parse_index_creation(input: &[u8]) -> IResult<&[u8], CreateIndexStatement> {
+    let (remaining_input, (_, _, _, _, _, name, _, _, _, table, _, _, _, columns, _, _, _)) =
+        tuple((
+            tag_no_case("create"),
+            multispace1,
+            tag_no_case("index"),
+            multispace1,
+            opt(tuple((tag_no_case("IF NOT EXISTS"), multispace1))),
+            identifier, // index name
+            multispace1,
+            tag_no_case("ON"),
+            multispace1,
+            identifier, // table
+            multispace0,
+            tag("("),
+            multispace0,
+            many1(identifier), // columns
+            multispace0,
+            tag(")"),
+            opt(tag(";")),
+        ))(input)?;
+
+    Ok((
+        remaining_input,
+        CreateIndexStatement {
+            name,
+            table,
+            fields: columns,
+        },
+    ))
 }
 
 fn identifier(input: &[u8]) -> IResult<&[u8], String> {
@@ -349,6 +390,20 @@ mod tests {
                     Field::new("first_appearance".to_string()),
                     Field::new("first_appearance_year".to_string())
                 ]
+            })
+        );
+    }
+    #[test]
+    fn parse_create_index() {
+        let input = b"CREATE INDEX idx_companies_country on companies (country);";
+        let (_, result) = parse(input).unwrap();
+
+        assert_eq!(
+            result,
+            SQLCommand::CreateIndex(CreateIndexStatement {
+                table: "companies".to_string(),
+                name: "idx_companies_country".to_string(),
+                fields: vec!["country".to_string()],
             })
         );
     }
