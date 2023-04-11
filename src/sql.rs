@@ -1,8 +1,8 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_while1},
+    bytes::complete::{tag, tag_no_case, take_until, take_while1},
     character::{
-        complete::{alphanumeric0, multispace0, multispace1},
+        complete::{multispace0, multispace1},
         is_alphanumeric,
     },
     combinator::{map, opt},
@@ -142,10 +142,11 @@ fn parse_where_clause(input: &[u8]) -> IResult<&[u8], Option<WhereClause>> {
         multispace0,
         tag("="),
         multispace0,
-        delimited(tag("'"), alphanumeric0, tag("'")),
+        tag("'"),
+        take_until("'"),
     )))(input)?;
 
-    let maybe_where = if let Some((_, _, _, field, _, _, _, value)) = maybe_where {
+    let maybe_where = if let Some((_, _, _, field, _, _, _, _, value)) = maybe_where {
         let value = String::from_utf8(value.to_vec()).unwrap();
         Some(WhereClause { field, value })
     } else {
@@ -305,7 +306,7 @@ mod tests {
 
     #[test]
     fn parse_select_with_where() {
-        let input = b"SELECT id, name FROM test WHERE name = 'test'";
+        let input = b"SELECT id, name FROM test WHERE super_name = 'test string'";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(
@@ -314,8 +315,8 @@ mod tests {
                 table: "test".to_string(),
                 fields: vec!["id".to_string(), "name".to_string()],
                 where_clause: Some(WhereClause {
-                    field: "name".to_string(),
-                    value: "test".to_string()
+                    field: "super_name".to_string(),
+                    value: "test string".to_string()
                 })
             }))
         );
