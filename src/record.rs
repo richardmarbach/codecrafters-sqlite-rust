@@ -1,6 +1,6 @@
 use crate::varint;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ColumnType {
     Null,
     I8,
@@ -36,7 +36,7 @@ impl From<u64> for ColumnType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ColumnValue<'page> {
     Null,
     I8(i64),
@@ -71,7 +71,7 @@ impl<'page> std::fmt::Display for ColumnValue<'page> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Record<'page> {
     pub values: Vec<ColumnValue<'page>>,
 }

@@ -1,3 +1,5 @@
+use std::io::stdout;
+
 use anyhow::{bail, Result};
 use sqlite_starter_rust::{database::Database, record::Record, sql};
 
@@ -44,56 +46,7 @@ fn main() -> Result<()> {
                     println!("{}", page.header.number_of_cells);
                 }
                 sql::SQLCommand::Select(sql::SelectStatement::Fields(command)) => {
-                    let row = database
-                        .schema
-                        .find_table(&command.table)
-                        .ok_or(anyhow::anyhow!("Table not found: {}", command.table))?
-                        .clone();
-
-                    let page = database.get_page(row.rootpage - 1)?;
-                    let (_, definition) = sql::parse_creation(row.sql.as_bytes())
-                        .map_err(|_e| anyhow::anyhow!("Failed to parse table definition"))?;
-
-                    let fields = command
-                        .fields
-                        .iter()
-                        .map(|sql_field| {
-                            definition.find_field(sql_field).expect("Fields not found")
-                        })
-                        .collect::<Vec<_>>();
-
-                    let records: Vec<Record> = page
-                        .cells()
-                        .map(|cell| match cell {
-                            sqlite_starter_rust::page::Cell::LeafTable { payload, .. } => {
-                                Ok(Record::read(payload))
-                            }
-                            _ => bail!("Unsupported cell type"),
-                        })
-                        .filter(|record| {
-                            let Ok(record) = record else { return true; };
-                            let Some(ref where_clause) = command.where_clause else {
-                                return true;
-                            };
-
-                            let (pos, _field) = definition
-                                .find_field(&where_clause.field)
-                                .expect("Field not found");
-
-                            format!("{}", record.values[pos]) == where_clause.value
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-
-                    let fields = fields.iter().map(|(pos, _)| pos).collect::<Vec<_>>();
-
-                    for record in records {
-                        let values = fields
-                            .iter()
-                            .map(|i| format!("{}", record.values[**i]))
-                            .collect::<Vec<_>>()
-                            .join("|");
-                        println!("{}", values);
-                    }
+                    database.select_fields(&command, &mut stdout())?;
                 }
                 sql::SQLCommand::CreateTable(_) => bail!("Unsupported command: {}", query_string),
             };
