@@ -87,12 +87,9 @@ fn main() -> Result<()> {
                     let fields = fields.iter().map(|(pos, _)| pos).collect::<Vec<_>>();
 
                     for record in records {
-                        let values = record
-                            .values
+                        let values = fields
                             .iter()
-                            .enumerate()
-                            .filter(|(i, _)| fields.contains(&i))
-                            .map(|(_, v)| format!("{}", v))
+                            .map(|i| format!("{}", record.values[**i]))
                             .collect::<Vec<_>>()
                             .join("|");
                         println!("{}", values);
