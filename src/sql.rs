@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{tag, tag_no_case, take_until, take_while1},
     character::{
         complete::{multispace0, multispace1},
-        is_alphanumeric,
+        is_alphanumeric, is_space,
     },
     combinator::{map, opt},
     multi::{many0, many1},
@@ -209,14 +209,21 @@ pub fn parse_index_creation(input: &[u8]) -> IResult<&[u8], CreateIndexStatement
 }
 
 fn identifier(input: &[u8]) -> IResult<&[u8], String> {
-    let (input, name) = delimited(
-        opt(tag("\"")),
+    let (input, name) = alt((
+        delimited(
+            tag("\""),
+            take_while1(is_sql_identifier_with_space),
+            tag("\""),
+        ),
         take_while1(is_sql_identifier),
-        opt(tag("\"")),
-    )(input)?;
+    ))(input)?;
     let name = String::from_utf8(name.to_vec()).unwrap();
 
     Ok((input, name))
+}
+
+fn is_sql_identifier_with_space(chr: u8) -> bool {
+    is_alphanumeric(chr) || chr == b'_' || is_space(chr)
 }
 
 fn is_sql_identifier(chr: u8) -> bool {
@@ -352,7 +359,7 @@ mod tests {
 
     #[test]
     fn parse_create_table_with_two_entries() {
-        let input = b"CREATE TABLE \"test\" (id INTEGER primary key, name TEXT NOT NULL)";
+        let input = b"CREATE TABLE \"test\" (id INTEGER primary key, \"name field\" TEXT NOT NULL)";
         let (_, result) = parse(input).unwrap();
 
         assert_eq!(
@@ -364,7 +371,7 @@ mod tests {
                         name: "id".to_string(),
                         is_primary_key: true
                     },
-                    Field::new("name".to_string())
+                    Field::new("name field".to_string())
                 ]
             })
         );
