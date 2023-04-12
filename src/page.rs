@@ -164,7 +164,7 @@ pub struct PageHeader {
     pub number_of_cells: u16,
     pub content_start_offset: u16,
     pub fragment_free_bytes: u8,
-    pub right_child_page_number: u32,
+    pub right_child_page_number: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -191,10 +191,10 @@ impl Page {
         let (header_size, right_child_page_number) = if kind.is_interior() {
             (
                 12,
-                u32::from_be_bytes([page[8], page[9], page[10], page[11]]),
+                Some(u32::from_be_bytes([page[8], page[9], page[10], page[11]])),
             )
         } else {
-            (8, 0)
+            (8, None)
         };
 
         let header = PageHeader {

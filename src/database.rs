@@ -114,6 +114,7 @@ impl Database {
             let Cell::InteriorTable { left_child_page, .. } = cell else {
                 bail!("Unsupported cell type");
             };
+
             let page = self.get_page(left_child_page - 1)?;
             match page.header.kind {
                 crate::page::PageKind::InteriorTable => {
@@ -124,9 +125,22 @@ impl Database {
                 }
 
                 _ => bail!("Unsupported page type"),
-            }
+            };
         }
 
+        if let Some(number) = page.header.right_child_page_number {
+            let page = self.get_page(number - 1)?;
+            match page.header.kind {
+                crate::page::PageKind::InteriorIndex => unimplemented!(),
+                crate::page::PageKind::LeafIndex => unimplemented!(),
+                crate::page::PageKind::InteriorTable => {
+                    self.follow_references(&page, &definition, &select_fields, &filter, out)?
+                }
+                crate::page::PageKind::LeafTable => {
+                    self.write_results(&page, &definition, &select_fields, &filter, out)?
+                }
+            };
+        }
         Ok(())
     }
 
