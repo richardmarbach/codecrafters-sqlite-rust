@@ -10,12 +10,15 @@ use anyhow::Result;
 #[derive(Debug)]
 pub struct SchemaStore {
     pub tables: HashMap<String, Table>,
+    // the tests care about the order of the tables
+    pub table_names: Vec<String>,
 }
 
 impl SchemaStore {
     pub fn read(page: Page) -> Result<Self> {
         let schema_table = SQLiteSchema::read(page)?;
         let mut tables: HashMap<String, Table> = HashMap::new();
+        let mut table_names: Vec<String> = Vec::new();
 
         for row in schema_table.rows.iter() {
             let (_, sql) = sql::parse_create(row.sql.as_bytes())
@@ -28,6 +31,10 @@ impl SchemaStore {
                     indexes: vec![],
                     rootpage: row.rootpage,
                 };
+
+                if table.is_user_table() {
+                    table_names.push(table.name.clone());
+                }
                 tables.insert(table.name.clone(), table);
             }
         }
@@ -55,13 +62,14 @@ impl SchemaStore {
             };
         }
 
-        Ok(Self { tables })
+        Ok(Self {
+            tables,
+            table_names,
+        })
     }
 
     pub fn user_tables(&self) -> impl Iterator<Item = &Table> {
-        self.tables
-            .values()
-            .filter(|table| !table.name.starts_with("sqlite_"))
+        self.tables.values().filter(|table| table.is_user_table())
     }
 
     pub fn find_table(&self, table_name: &str) -> Option<&Table> {
@@ -73,6 +81,7 @@ impl Default for SchemaStore {
     fn default() -> Self {
         Self {
             tables: HashMap::new(),
+            table_names: vec![],
         }
     }
 }
@@ -91,6 +100,10 @@ impl Table {
             .iter()
             .enumerate()
             .find(|(_, column)| column.name == column_name)
+    }
+
+    pub fn is_user_table(&self) -> bool {
+        !self.name.starts_with("sqlite_")
     }
 }
 

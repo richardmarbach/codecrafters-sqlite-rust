@@ -27,15 +27,11 @@ fn main() -> Result<()> {
             );
         }
 
-        ".tables" => {
-            let table_names = database
-                .schema
-                .user_tables()
-                .map(|t| t.name.clone())
-                .collect::<Vec<_>>()
-                .join(" ");
-            println!("{}", table_names);
-        }
+        ".tables" => database
+            .schema
+            .table_names
+            .iter()
+            .for_each(|name| println!("{}", name)),
 
         query_string => {
             let (_, query) = sql::parse(query_string.as_bytes())
