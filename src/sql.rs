@@ -56,15 +56,6 @@ pub struct CreateTableStatement {
     pub fields: Vec<Field>,
 }
 
-impl CreateTableStatement {
-    pub fn find_field(&self, field_name: &str) -> Option<(usize, &Field)> {
-        self.fields
-            .iter()
-            .enumerate()
-            .find(|(_, field)| field.name == field_name)
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct CreateIndexStatement {
     pub name: String,
@@ -154,6 +145,13 @@ fn parse_where_clause(input: &[u8]) -> IResult<&[u8], Option<WhereClause>> {
     };
 
     Ok((remaining_input, maybe_where))
+}
+
+pub fn parse_create(input: &[u8]) -> IResult<&[u8], SQLCommand> {
+    alt((
+        map(parse_creation, |c| SQLCommand::CreateTable(c)),
+        map(parse_index_creation, |c| SQLCommand::CreateIndex(c)),
+    ))(input)
 }
 
 pub fn parse_creation(input: &[u8]) -> IResult<&[u8], CreateTableStatement> {

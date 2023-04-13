@@ -6,7 +6,7 @@ use anyhow::{bail, Result};
 use crate::page::{Cell, Page};
 use crate::record::Record;
 use crate::sql;
-use crate::sqlite_schema::SQLiteSchema;
+use crate::sqlite_schema::{SchemaStore, Table};
 
 #[derive(Debug)]
 pub struct DatabaseHeader {
@@ -33,7 +33,7 @@ impl DatabaseHeader {
 pub struct Database {
     pub header: DatabaseHeader,
     pub file: File,
-    pub schema: SQLiteSchema,
+    pub schema: SchemaStore,
 }
 
 impl Database {
@@ -42,7 +42,7 @@ impl Database {
         let header = DatabaseHeader::read(&mut file)?;
 
         let page = Page::read_with_offset(&mut file, header.page_size - 100, 100)?;
-        let schema = SQLiteSchema::read(page)?;
+        let schema = SchemaStore::read(page)?;
 
         Ok(Self {
             header,
@@ -70,15 +70,16 @@ impl Database {
             .ok_or(anyhow::anyhow!("Table not found: {}", &sql_statement.table))?
             .clone();
 
-        let (_, definition) = sql::parse_creation(schema_definition.sql.as_bytes())
-            .map_err(|_e| anyhow::anyhow!("Failed to parse table definition"))?;
-
         let page = self.get_page(schema_definition.rootpage - 1)?;
 
         let select_fields = sql_statement
             .fields
             .iter()
-            .map(|sql_field| definition.find_field(sql_field).expect("Fields not found"))
+            .map(|sql_field| {
+                schema_definition
+                    .find_column(sql_field)
+                    .expect("Fields not found")
+            })
             .map(|(pos, field)| (pos, field.is_primary_key))
             .collect::<Vec<_>>();
 
@@ -87,14 +88,14 @@ impl Database {
             crate::page::PageKind::LeafIndex => unimplemented!(),
             crate::page::PageKind::InteriorTable => self.follow_references(
                 &page,
-                &definition,
+                &schema_definition,
                 &select_fields,
                 &sql_statement.where_clause,
                 out,
             ),
             crate::page::PageKind::LeafTable => self.write_results(
                 &page,
-                &definition,
+                &schema_definition,
                 &select_fields,
                 &sql_statement.where_clause,
                 out,
@@ -105,7 +106,7 @@ impl Database {
     fn follow_references(
         &mut self,
         page: &Page,
-        definition: &sql::CreateTableStatement,
+        definition: &Table,
         select_fields: &[(usize, bool)],
         filter: &Option<sql::WhereClause>,
         out: &mut impl std::io::Write,
@@ -147,7 +148,7 @@ impl Database {
     fn write_results(
         &self,
         page: &Page,
-        definition: &sql::CreateTableStatement,
+        definition: &Table,
         select_fields: &[(usize, bool)],
         filter: &Option<sql::WhereClause>,
         out: &mut impl std::io::Write,
@@ -165,7 +166,7 @@ impl Database {
                             };
 
                 let (pos, _field) = definition
-                    .find_field(&filter.field)
+                    .find_column(&filter.field)
                     .expect("Field not found");
 
                 format!("{}", record.values[pos]) == filter.value
