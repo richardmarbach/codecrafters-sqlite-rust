@@ -105,6 +105,14 @@ impl Table {
     pub fn is_user_table(&self) -> bool {
         !self.name.starts_with("sqlite_")
     }
+
+    pub fn find_applicable_index(&self, filter: &Option<sql::WhereClause>) -> Option<&Index> {
+        let Some(filter) = filter else { return None; };
+
+        self.indexes
+            .iter()
+            .find(|index| filter.field == index.columns[0])
+    }
 }
 
 impl From<Index> for Table {
@@ -139,6 +147,15 @@ pub struct Index {
     pub columns: Vec<String>,
     pub table_name: String,
     pub rootpage: u32,
+}
+
+impl Index {
+    pub fn find_column(&self, column_name: &str) -> Option<(usize, &String)> {
+        self.columns
+            .iter()
+            .enumerate()
+            .find(|(_, column)| *column == column_name)
+    }
 }
 
 #[derive(Debug)]
