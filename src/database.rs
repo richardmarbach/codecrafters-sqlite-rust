@@ -180,7 +180,8 @@ impl Database {
             let record = Record::read(0, payload);
 
             let ColumnValue::Text(value) = record.values[query.index_field]  else {
-                // eprintln!("interior index value is the wrong type: {:?}", record.values);
+                let page = self.get_page(left_child_page - 1)?;
+                self.read_index(&page, query, results)?;
                 continue;
             };
 
@@ -194,9 +195,9 @@ impl Database {
                 }
             }
 
-            if query.filter.value.as_bytes() > value {
-                continue;
-            }
+            // if query.filter.value.as_bytes() > value {
+            //     continue;
+            // }
 
             let page = self.get_page(left_child_page - 1)?;
             self.read_index(&page, query, results)?;
