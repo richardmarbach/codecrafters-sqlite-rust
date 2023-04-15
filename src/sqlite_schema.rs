@@ -224,9 +224,13 @@ impl<'page> TryFrom<Cell<'page>> for SQLiteSchemaRow {
 
             let rootpage = values
                 .next()
-                .and_then(|v| match v {
-                    ColumnValue::I8(i) => Some(i as u32),
-                    _ => None,
+                .and_then(|v| {
+                    if v.is_number() {
+                        let page_number: i64 = v.into();
+                        Some(page_number as u32)
+                    } else {
+                        None
+                    }
                 })
                 .map_or_else(|| Err(anyhow::anyhow!("Invalid schema root page")), Ok)?;
 

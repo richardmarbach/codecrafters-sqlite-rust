@@ -2,9 +2,10 @@ use std::fs::File;
 use std::io::{prelude::*, SeekFrom};
 
 use anyhow::{bail, Result};
+use itertools::Itertools;
 
 use crate::page::{Cell, Page};
-use crate::record::Record;
+use crate::record::{ColumnValue, Record};
 use crate::sql::{self, SelectFields};
 use crate::sqlite_schema::{Index, SchemaStore, Table};
 
@@ -48,16 +49,6 @@ impl<'query> Query<'query> {
             table,
             select_fields,
             filter: sql_statement.where_clause.as_ref(),
-        }
-    }
-}
-
-impl<'query> From<IndexQuery<'query>> for Query<'query> {
-    fn from(query: IndexQuery<'query>) -> Query<'query> {
-        Self {
-            table: query.table,
-            select_fields: query.select_fields,
-            filter: Some(query.filter),
         }
     }
 }
@@ -143,77 +134,88 @@ impl Database {
             let query = IndexQuery::new(&schema_definition, sql_statement, index);
             let page = self.get_page(index.rootpage - 1)?;
 
-            return match page.header.kind {
-                crate::page::PageKind::InteriorIndex => {
-                    self.follow_index_references(&page, &query, out)
-                }
-                crate::page::PageKind::LeafIndex => self.select_with_index(&page, &query, out),
+            let mut results = Vec::with_capacity(self.header.page_size as usize);
+            self.read_index(&page, &query, &mut results)?;
+            results.sort_unstable();
 
-                crate::page::PageKind::InteriorTable | crate::page::PageKind::LeafTable => {
-                    unreachable!()
-                }
-            };
+            let query = Query::new(&schema_definition, sql_statement);
+            let page = self.get_page(schema_definition.rootpage - 1)?;
+            self.read_ids_from_table(&page, &query, &results, out)?;
+
+            return Ok(());
         }
 
         let query = Query::new(&schema_definition, sql_statement);
         let page = self.get_page(schema_definition.rootpage - 1)?;
+        self.read_table(&page, &query, out)
+    }
 
+    fn read_index(
+        &mut self,
+        page: &Page,
+        query: &IndexQuery,
+        results: &mut Vec<i64>,
+    ) -> Result<()> {
         match page.header.kind {
-            crate::page::PageKind::InteriorTable => {
-                self.follow_table_references(&page, &query, out)
+            crate::page::PageKind::InteriorIndex => {
+                self.read_interior_index(&page, &query, results)
             }
-            crate::page::PageKind::LeafTable => self.write_results(&page, &query, out),
-            crate::page::PageKind::InteriorIndex | crate::page::PageKind::LeafIndex => {
-                unreachable!()
+            crate::page::PageKind::LeafIndex => self.read_leaf_index(&page, &query, results),
+            crate::page::PageKind::InteriorTable | crate::page::PageKind::LeafTable => {
+                bail!("Malformed index: index contains table pages")
             }
         }
     }
 
-    fn follow_index_references(
+    fn read_interior_index(
         &mut self,
         page: &Page,
         query: &IndexQuery,
-        out: &mut impl std::io::Write,
+        results: &mut Vec<i64>,
     ) -> Result<()> {
         for cell in page.cells() {
-            let Cell::InteriorIndex { left_child_page, .. } = cell else {
+            let Cell::InteriorIndex { left_child_page, payload, .. } = cell else {
                 bail!("Unsupported cell type");
             };
+            let record = Record::read(0, payload);
+
+            let ColumnValue::Text(value) = record.values[query.index_field]  else {
+                // eprintln!("interior index value is the wrong type: {:?}", record.values);
+                continue;
+            };
+
+            if query.filter.value.as_bytes() == value {
+                let id = record.values.last().expect("index must have id value");
+                if id.is_number() {
+                    let id: i64 = id.clone().into();
+                    results.push(id);
+                } else {
+                    return Err(anyhow::anyhow!("Id was not a number"));
+                }
+            }
+
+            if query.filter.value.as_bytes() > value {
+                continue;
+            }
 
             let page = self.get_page(left_child_page - 1)?;
-            match page.header.kind {
-                crate::page::PageKind::InteriorIndex => {
-                    self.follow_index_references(&page, query, out)?;
-                }
-                crate::page::PageKind::LeafIndex => {
-                    self.select_with_index(&page, query, out)?;
-                }
-                _ => bail!("Unsupported page type"),
-            };
+            self.read_index(&page, query, results)?;
         }
 
         if let Some(number) = page.header.right_child_page_number {
             let page = self.get_page(number - 1)?;
-            match page.header.kind {
-                crate::page::PageKind::InteriorIndex => {
-                    self.follow_index_references(&page, &query, out)?
-                }
-                crate::page::PageKind::LeafIndex => self.select_with_index(&page, &query, out)?,
-                crate::page::PageKind::InteriorTable | crate::page::PageKind::LeafTable => {
-                    bail!("Attempted to access table from index")
-                }
-            };
+            self.read_index(&page, query, results)?;
         }
         Ok(())
     }
 
-    fn select_with_index(
+    fn read_leaf_index(
         &mut self,
         page: &Page,
         query: &IndexQuery,
-        out: &mut impl std::io::Write,
+        results: &mut Vec<i64>,
     ) -> Result<()> {
-        let records = page
+        let ids = page
             .cells()
             .map(|cell| match cell {
                 Cell::LeafIndex { payload, .. } => Ok(Record::read(0, payload)),
@@ -223,16 +225,131 @@ impl Database {
                 let Ok(record) = record else { return true; };
                 format!("{}", record.values[query.index_field]) == query.filter.value
             })
-            .collect::<Result<Vec<Record>>>()?;
+            .map_ok(|record| {
+                let id = record.values.last().expect("index must have id value");
+                if id.is_number() {
+                    let id: i64 = id.clone().into();
+                    Ok(id)
+                } else {
+                    Err(anyhow::anyhow!("Id was not a number"))
+                }
+            });
 
-        for record in records {
-            println!("Found {} {}", record.values[0], record.values[1]);
+        for id in ids {
+            let id = id??;
+            results.push(id);
         }
 
         Ok(())
     }
 
-    fn follow_table_references(
+    fn read_ids_from_table(
+        &mut self,
+        page: &Page,
+        query: &Query,
+        ids: &[i64],
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
+        match page.header.kind {
+            crate::page::PageKind::InteriorTable => {
+                self.read_ids_from_interior_table(&page, &query, ids, out)
+            }
+            crate::page::PageKind::LeafTable => {
+                self.read_ids_from_leaf_table(&page, &query, ids, out)
+            }
+            crate::page::PageKind::InteriorIndex | crate::page::PageKind::LeafIndex => {
+                bail!("Malformed table: table contains index pages")
+            }
+        }
+    }
+    fn read_ids_from_interior_table(
+        &mut self,
+        page: &Page,
+        query: &Query,
+        ids: &[i64],
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
+        let mut ids = ids;
+        for cell in page.cells() {
+            let Cell::InteriorTable { left_child_page, key } = cell else {
+                bail!("Unsupported cell type");
+            };
+
+            let split_at = ids.split_at(ids.partition_point(|id| *id < key as i64));
+            let left_ids = split_at.0; // Ids to the left
+            ids = split_at.1; // Ids to the right
+
+            if !left_ids.is_empty() {
+                let page = self.get_page(left_child_page - 1)?;
+                self.read_ids_from_table(&page, query, left_ids, out)?;
+            }
+        }
+
+        // No more ids to the right. We're done.
+        if ids.len() == 0 {
+            return Ok(());
+        }
+
+        if let Some(number) = page.header.right_child_page_number {
+            let page = self.get_page(number - 1)?;
+            self.read_ids_from_table(&page, query, ids, out)?;
+        }
+        Ok(())
+    }
+
+    fn read_ids_from_leaf_table(
+        &self,
+        page: &Page,
+        query: &Query,
+        ids: &[i64],
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
+        let records = page
+            .cells()
+            .map(|cell| match cell {
+                Cell::LeafTable { payload, rowid, .. } => Ok(Record::read(rowid, payload)),
+                _ => bail!("Unsupported cell type"),
+            })
+            .filter(|record| {
+                let Ok(record) = record else { return true; };
+                ids.binary_search(&record.rowid).is_ok()
+            })
+            .collect::<Result<Vec<Record>>>()?;
+
+        for record in records {
+            let values = query
+                .select_fields
+                .iter()
+                .map(|(i, is_primary_key)| {
+                    if *is_primary_key {
+                        format!("{}", record.rowid)
+                    } else {
+                        format!("{}", record.values[*i])
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("|");
+            write!(out, "{}\n", values)?;
+        }
+        Ok(())
+    }
+
+    fn read_table(
+        &mut self,
+        page: &Page,
+        query: &Query,
+        out: &mut impl std::io::Write,
+    ) -> Result<()> {
+        match page.header.kind {
+            crate::page::PageKind::InteriorTable => self.read_interior_table(&page, &query, out),
+            crate::page::PageKind::LeafTable => self.read_leaf_table(&page, &query, out),
+            crate::page::PageKind::InteriorIndex | crate::page::PageKind::LeafIndex => {
+                bail!("Malformed table: table contains index pages")
+            }
+        }
+    }
+
+    fn read_interior_table(
         &mut self,
         page: &Page,
         query: &Query,
@@ -244,34 +361,17 @@ impl Database {
             };
 
             let page = self.get_page(left_child_page - 1)?;
-            match page.header.kind {
-                crate::page::PageKind::InteriorTable => {
-                    self.follow_table_references(&page, &query, out)?;
-                }
-                crate::page::PageKind::LeafTable => {
-                    self.write_results(&page, &query, out)?;
-                }
-
-                _ => bail!("Unsupported page type"),
-            };
+            self.read_table(&page, query, out)?;
         }
 
         if let Some(number) = page.header.right_child_page_number {
             let page = self.get_page(number - 1)?;
-            match page.header.kind {
-                crate::page::PageKind::InteriorTable => {
-                    self.follow_table_references(&page, &query, out)?
-                }
-                crate::page::PageKind::LeafTable => self.write_results(&page, &query, out)?,
-                crate::page::PageKind::InteriorIndex | crate::page::PageKind::LeafIndex => {
-                    unreachable!()
-                }
-            };
+            self.read_table(&page, query, out)?;
         }
         Ok(())
     }
 
-    fn write_results(
+    fn read_leaf_table(
         &self,
         page: &Page,
         query: &Query,

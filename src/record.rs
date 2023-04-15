@@ -52,6 +52,41 @@ pub enum ColumnValue<'page> {
     Text(&'page [u8]),
 }
 
+impl<'page> ColumnValue<'page> {
+    pub fn is_number(&self) -> bool {
+        match self {
+            ColumnValue::I8(_)
+            | ColumnValue::I16(_)
+            | ColumnValue::I24(_)
+            | ColumnValue::I32(_)
+            | ColumnValue::I48(_)
+            | ColumnValue::I64(_)
+            | ColumnValue::F64(_) => true,
+            ColumnValue::Zero | ColumnValue::One => true,
+            ColumnValue::Null => false,
+            ColumnValue::Blob(_) | ColumnValue::Text(_) => false,
+        }
+    }
+}
+
+impl Into<i64> for ColumnValue<'_> {
+    fn into(self) -> i64 {
+        match self {
+            ColumnValue::Null => 0,
+            ColumnValue::I8(n)
+            | ColumnValue::I16(n)
+            | ColumnValue::I24(n)
+            | ColumnValue::I32(n)
+            | ColumnValue::I48(n)
+            | ColumnValue::I64(n) => n,
+            ColumnValue::F64(n) => n as i64,
+            ColumnValue::Zero => 0,
+            ColumnValue::One => 1,
+            _ => panic!("Cannot convert to i64"),
+        }
+    }
+}
+
 impl<'page> std::fmt::Display for ColumnValue<'page> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
